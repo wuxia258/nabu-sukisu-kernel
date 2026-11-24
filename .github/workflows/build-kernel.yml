@@ -230,6 +230,16 @@ jobs:
       - name: Build kernel
         run: |
           set -eux
+          # ---- 修正 proton-clang 自带的 as ----
+          # proton-clang 20210123 的 bin/as 是宿主 x86 汇编器, 不认识 ARM64 的 -EL,
+          # clang 调它汇编 scripts/mod/empty.o 与 vdso 时报 "unrecognized option '-EL'"。
+          # binutils 在上一装已经装好 aarch64-linux-gnu-as, 这里把 toolchain/bin/as
+          # 换成它 (交叉汇编器), clang 不管找 'as' 还是 '<triplet>-as' 都能拿到正确工具。
+          AS_BIN="$(command -v aarch64-linux-gnu-as)"
+          echo "assembler = $AS_BIN"
+          ln -sf "$AS_BIN" "${GITHUB_WORKSPACE}/toolchain/bin/as"
+          "${GITHUB_WORKSPACE}/toolchain/bin/as" --version | head -1
+
           cd kernel
           export ARCH=arm64 SUBARCH=arm64
           export PATH="${GITHUB_WORKSPACE}/toolchain/bin:${PATH}"
