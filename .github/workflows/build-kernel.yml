@@ -185,6 +185,12 @@ jobs:
             echo "CONFIG_KALLSYMS=y"
             echo "CONFIG_KALLSYMS_ALL=y"
             echo "# CONFIG_KPROBES is not set"
+            # ---- 禁用栈保护 (4.14 + clang 的 prepare-compiler-check 会因为
+            #      -fstack-protector-strong 检测失败而中止; 该选项只是安全加固,
+            #      不影响功能, 也不影响 KSU。追加在末尾覆盖 defconfig 里的强栈保护)
+            echo "CONFIG_CC_STACKPROTECTOR_NONE=y"
+            echo "# CONFIG_CC_STACKPROTECTOR_STRONG is not set"
+            echo "# CONFIG_CC_STACKPROTECTOR_REGULAR is not set"
             if [ "${{ github.event.inputs.enable_susfs }}" != "true" ]; then
               echo "# CONFIG_KSU_SUSFS is not set"
             else
