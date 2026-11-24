@@ -191,6 +191,13 @@ jobs:
             echo "CONFIG_CC_STACKPROTECTOR_NONE=y"
             echo "# CONFIG_CC_STACKPROTECTOR_STRONG is not set"
             echo "# CONFIG_CC_STACKPROTECTOR_REGULAR is not set"
+            # ---- 关闭 LAST_TOUCH_EVENTS ----
+            # 小米 nabu-r-oss 的 drivers/input/input.c 在 CONFIG_LAST_TOUCH_EVENTS 下
+            # 调用 touch_press_release_events_collect(), 但该函数在开源源码树里没有
+            # 定义 (实现在闭源/遗漏文件里), 纯净源码编译会报 implicit declaration
+            # 并被 -Werror 打断。这是"记录最后触摸事件"的调试特性, 与 root/KSU 无关,
+            # 关掉宏即可 (调用点被 #ifdef 包住), 不影响触屏正常工作。
+            echo "# CONFIG_LAST_TOUCH_EVENTS is not set"
             if [ "${{ github.event.inputs.enable_susfs }}" != "true" ]; then
               echo "# CONFIG_KSU_SUSFS is not set"
             else
