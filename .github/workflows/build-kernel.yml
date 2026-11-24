@@ -43,6 +43,9 @@ jobs:
     timeout-minutes: 240
 
     steps:
+      - name: Checkout build repo (patches/config/tools)
+        uses: actions/checkout@v4
+
       - name: Checkout kernel source
         run: |
           set -eux
