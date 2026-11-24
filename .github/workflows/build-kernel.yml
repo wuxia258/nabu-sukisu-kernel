@@ -230,14 +230,30 @@ jobs:
       - name: Build kernel
         run: |
           set -eux
-          # ---- 修正 proton-clang 自带的 as ----
-          # proton-clang 20210123 的 bin/as 是宿主 x86 汇编器, 不认识 ARM64 的 -EL,
-          # clang 调它汇编 scripts/mod/empty.o 与 vdso 时报 "unrecognized option '-EL'"。
-          # binutils 在上一装已经装好 aarch64-linux-gnu-as, 这里把 toolchain/bin/as
-          # 换成它 (交叉汇编器), clang 不管找 'as' 还是 '<triplet>-as' 都能拿到正确工具。
-          AS_BIN="$(command -v aarch64-linux-gnu-as)"
-          echo "assembler = $AS_BIN"
-          ln -sf "$AS_BIN" "${GITHUB_WORKSPACE}/toolchain/bin/as"
+          # ---- 修正 proton-clang 自带的 as（智能分发 wrapper）----
+          # 背景: 内核编译里有两种汇编需求, 必须用不同的 as:
+          #   * 宿主工具 (scripts/kconfig/conf.o 等, HOSTCC=gcc): x86 汇编器, 认 --64
+          #   * 目标代码 (scripts/mod/empty.o / vdso, CC=clang ARM64): 交叉汇编器, 认 -EL
+          # proton-clang 20210123 的 bin/as 是 x86 的 (不认 -EL), 直接换成交叉 as 又会让
+          # 宿主编译报 "--64 unrecognized"。所以放一个 wrapper 按参数自动分发。
+          HOST_AS="$(command -v x86_64-linux-gnu-as || echo /usr/bin/as)"
+          TARGET_AS="$(command -v aarch64-linux-gnu-as)"
+          echo "host as    = $HOST_AS"
+          echo "target as  = $TARGET_AS"
+          mv "${GITHUB_WORKSPACE}/toolchain/bin/as" "${GITHUB_WORKSPACE}/toolchain/bin/as.orig" 2>/dev/null || true
+          cat > "${GITHUB_WORKSPACE}/toolchain/bin/as" <<'ASEOF'
+          #!/bin/sh
+          # smart asm dispatcher: x86 host (--64/--32) vs arm64 target (default)
+          for _a in "$@"; do
+            case "$_a" in
+              --64|--32|-m64|-m32|--x86-64) exec HOST_AS_PLACEHOLDER "$@" ;;
+            esac
+          done
+          exec TARGET_AS_PLACEHOLDER "$@"
+          ASEOF
+          sed -i "s|HOST_AS_PLACEHOLDER|$HOST_AS|; s|TARGET_AS_PLACEHOLDER|$TARGET_AS|" \
+            "${GITHUB_WORKSPACE}/toolchain/bin/as"
+          chmod +x "${GITHUB_WORKSPACE}/toolchain/bin/as"
           "${GITHUB_WORKSPACE}/toolchain/bin/as" --version | head -1
 
           cd kernel
