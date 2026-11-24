@@ -139,6 +139,17 @@ jobs:
             || { echo "!! 找不到 ksu_handle_input_handle_event"; exit 1; }
           echo "✅ 6 个 hook 函数签名全部存在"
 
+          # ---- 兼容 4.14: 移除 linux/static_call.h 的 include ----
+          # SukiSU builtin 的 kernel_includes.h 无条件 include <linux/static_call.h>,
+          # 但该头文件是 Linux 5.x 才引入的, 4.14 内核树里没有 -> fatal error。
+          # 全源码里该头没有任何实际使用 (只此一处 include), 直接删掉即可。
+          if [ ! -f include/linux/static_call.h ]; then
+            echo "4.14 内核无 static_call.h, 移除 KSU 里的 include"
+            sed -i '/#include <linux\/static_call.h>/d' drivers/kernelsu/kernel_includes.h
+            ! grep -q "static_call.h" drivers/kernelsu/kernel_includes.h \
+              || { echo "!! 移除 static_call.h include 失败"; exit 1; }
+          fi
+
       - name: Apply KSU manual hooks patch
         run: |
           set -eux
