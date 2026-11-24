@@ -150,6 +150,20 @@ jobs:
               || { echo "!! 移除 static_call.h include 失败"; exit 1; }
           fi
 
+          # ---- 兼容 4.14: access_ok 参数数量 + kvcalloc 不存在 ----
+          # kpm.c 用了 5.x 风格 access_ok(addr,size); 4.14 是 access_ok(type,addr,size)
+          #   -> 改用源码自带的 ksu_access_ok 兼容宏 (kernel_compat.h, 会按 VERIFY_READ 展开)
+          # dispatch.c 用了 kvcalloc (5.x 引入); 4.14 没有 -> 用 kcalloc (kvfree 可正确释放)
+          if ! grep -q "ksu_access_ok(u64_to_user_ptr(cmd.result_code)" drivers/kernelsu/extension/kpm/kpm.c; then
+            sed -i 's/access_ok(u64_to_user_ptr(cmd.result_code)/ksu_access_ok(u64_to_user_ptr(cmd.result_code)/' drivers/kernelsu/extension/kpm/kpm.c
+          fi
+          grep -q "ksu_access_ok(u64_to_user_ptr(cmd.result_code)" drivers/kernelsu/extension/kpm/kpm.c \
+            || { echo "!! access_ok 兼容修复失败"; exit 1; }
+          sed -i 's/kvcalloc(/kcalloc(/g' drivers/kernelsu/supercall/dispatch.c
+          ! grep -q "kvcalloc" drivers/kernelsu/supercall/dispatch.c \
+            || { echo "!! kvcalloc 兼容修复失败"; exit 1; }
+          echo "✅ 4.14 access_ok / kvcalloc 兼容修复完成"
+
       - name: Apply KSU manual hooks patch
         run: |
           set -eux
