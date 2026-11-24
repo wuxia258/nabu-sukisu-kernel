@@ -256,6 +256,30 @@ jobs:
           chmod +x "${GITHUB_WORKSPACE}/toolchain/bin/as"
           "${GITHUB_WORKSPACE}/toolchain/bin/as" --version | head -1
 
+          # ---- 同样的分发 wrapper 用于 ld ----
+          # proton-clang 自带的 ld 也是 x86 的, 不认 ARM64 的 emulation
+          # "aarch64linux"; 宿主工具(modpost)链接用 native ld, 目标(vdso/modules)
+          # 链接用 aarch64-linux-gnu-ld。
+          HOST_LD="$(command -v x86_64-linux-gnu-ld || echo /usr/bin/ld)"
+          TARGET_LD="$(command -v aarch64-linux-gnu-ld)"
+          echo "host ld    = $HOST_LD"
+          echo "target ld  = $TARGET_LD"
+          mv "${GITHUB_WORKSPACE}/toolchain/bin/ld" "${GITHUB_WORKSPACE}/toolchain/bin/ld.orig" 2>/dev/null || true
+          cat > "${GITHUB_WORKSPACE}/toolchain/bin/ld" <<'LDEOF'
+          #!/bin/sh
+          # smart linker dispatcher: arm64 target (-m aarch64linux / -EL) vs x86 host
+          for _a in "$@"; do
+            case "$_a" in
+              *aarch64*|-EL) exec TARGET_LD_PLACEHOLDER "$@" ;;
+            esac
+          done
+          exec HOST_LD_PLACEHOLDER "$@"
+          LDEOF
+          sed -i "s|HOST_LD_PLACEHOLDER|$HOST_LD|; s|TARGET_LD_PLACEHOLDER|$TARGET_LD|" \
+            "${GITHUB_WORKSPACE}/toolchain/bin/ld"
+          chmod +x "${GITHUB_WORKSPACE}/toolchain/bin/ld"
+          "${GITHUB_WORKSPACE}/toolchain/bin/ld" --version | head -1
+
           cd kernel
           export ARCH=arm64 SUBARCH=arm64
           export PATH="${GITHUB_WORKSPACE}/toolchain/bin:${PATH}"
