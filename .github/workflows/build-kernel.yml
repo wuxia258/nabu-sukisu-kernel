@@ -236,21 +236,12 @@ jobs:
             # 并被 -Werror 打断。这是"记录最后触摸事件"的调试特性, 与 root/KSU 无关,
             # 关掉宏即可 (调用点被 #ifdef 包住), 不影响触屏正常工作。
             echo "# CONFIG_LAST_TOUCH_EVENTS is not set"
-            # ---- 强化 pstore/ramoops 抓启动 panic 日志 ----
-            # 注意 4.14 内核里 ramoops 后端的符号名是 CONFIG_PSTORE_RAM (不是
-            # 5.x 的 CONFIG_PSTORE_RAMOOPS)。设备 config 里 PSTORE/RAM/CONSOLE/
-            # PMSG 其实都已开启, 但 panic 后 pstore 仍为空, 说明要么 ramoops
-            # 保留内存没生效, 要么 panic 回调没走到。这里:
-            #   1) 再次显式确保后端全开;
-            #   2) CONFIG_PANIC_TIMEOUT=10 让 panic 后停 10 秒, 给 pstore 写完;
-            #   3) 关 DEBUG_INFO 缩容 (pstore 存的是 kmsg 原文, 不依赖 debug info),
-            #      内核从 39.6MB 降到约 12MB, 减轻启动内存压力。
-            echo "CONFIG_PSTORE=y"
-            echo "CONFIG_PSTORE_RAM=y"
-            echo "CONFIG_PSTORE_CONSOLE=y"
-            echo "CONFIG_PSTORE_PMSG=y"
-            echo "CONFIG_PANIC_TIMEOUT=10"
-            echo "# CONFIG_DEBUG_INFO is not set"
+            # ---- 隔离变量: 本 pstore 强化块已回退到 run9 状态 ----
+            # run9 已验证能启动到 framework (pstore 里有 SukiSU banner + Nova
+            # 授权记录), run11 同时加了 uname 伪装 + 本 pstore 块后卡米字。
+            # 为定位卡米字根因, 这里去掉非必要的 pstore/PANIC_TIMEOUT/
+            # DEBUG_INFO 改动, 只保留 uname 伪装这一个变量。
+            # 设备 config.gz 里 PSTORE/RAM/CONSOLE/PMSG 本来就是 y, 无需重复加。
             if [ "${{ github.event.inputs.enable_susfs }}" != "true" ]; then
               echo "# CONFIG_KSU_SUSFS is not set"
             else
