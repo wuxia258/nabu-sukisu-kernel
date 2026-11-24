@@ -164,6 +164,19 @@ jobs:
             || { echo "!! kvcalloc 兼容修复失败"; exit 1; }
           echo "✅ 4.14 access_ok / kvcalloc 兼容修复完成"
 
+          # ---- ★ 内核版本伪装: 绕过 Android V netbpfload 的 kernel>=4.19 检查 ----
+          # 设备是 ColorOS 15 (Android 15 / API 35), 其 netbpfload 会读 uname()
+          # 的 release 字段, 若 kernel < 4.19 就打印 "Android V requires kernel 4.19"
+          # 并以 'bpfloader-failed' 每 14 秒重启 -> 高通启动失败保护踢回 fastboot。
+          # 设备原本能启动是因为 APatch/KernelPatch hook 了 uname 伪装成 4.19.280
+          # (日志成功值 kver:4130118 = (4<<24)|(19<<16)|280)。
+          # 这里只改 init_uts_ns.name.release 的返回值, 不动 UTS_RELEASE 宏和
+          # LINUX_VERSION_CODE, 因此 4.14 源码的所有条件编译完全不受影响。
+          sed -i 's/\.release[[:space:]]*=[[:space:]]*UTS_RELEASE,/.release = "4.19.280-perf",/' init/version.c
+          grep -q '\.release = "4.19.280-perf"' init/version.c \
+            || { echo "!! uname 版本伪装失败"; grep -n '\.release' init/version.c; exit 1; }
+          echo "✅ uname 伪装为 4.19.280-perf (绕过 netbpfload kernel>=4.19)"
+
       - name: Apply KSU manual hooks patch
         run: |
           set -eux
