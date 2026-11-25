@@ -180,16 +180,15 @@ jobs:
           #   与路径无关。
           PATCH_UNAME="${GITHUB_WORKSPACE}/patches/uname-percomm.patch"
           test -f "$PATCH_UNAME"
-          # 注意: 补丁内路径是 a/kernel/sys.c, 必须在内核源码树的父目录用 -p1 应用。
-          # 该步骤前面已 cd kernel, 所以这里用 -d "${GITHUB_WORKSPACE}" 指定父目录;
-          # 之后的 grep 仍以 cwd(=kernel 源码树根) 为准, 路径写 sys.c / init/version.c。
+          # 注意: 步骤开头已 cd kernel, 当前 cwd 就是内核源码树根;
+          # 补丁内路径 a/kernel/sys.c 配合 -p1 正好落在 <树根>/kernel/sys.c, 正确。
           echo "=== uname per-comm dry-run ==="
-          patch -p1 -d "${GITHUB_WORKSPACE}" --dry-run < "$PATCH_UNAME"
+          patch -p1 --dry-run < "$PATCH_UNAME"
           echo "=== uname per-comm apply ==="
-          patch -p1 -d "${GITHUB_WORKSPACE}" < "$PATCH_UNAME"
-          grep -q "ksu_is_bpfloader_task" sys.c \
+          patch -p1 < "$PATCH_UNAME"
+          grep -q "ksu_is_bpfloader_task" kernel/sys.c \
             || { echo "!! per-comm uname 伪装补丁未生效"; exit 1; }
-          grep -q 'memcpy(tmp.release, "4.19.280-perf"' sys.c \
+          grep -q 'memcpy(tmp.release, "4.19.280-perf"' kernel/sys.c \
             || { echo "!! per-comm uname 伪装补丁未生效"; exit 1; }
           test -z "$(grep 'UTS_RELEASE' init/version.c | grep '4.19')" \
             || { echo "!! init/version.c 不应被全局篡改"; exit 1; }
