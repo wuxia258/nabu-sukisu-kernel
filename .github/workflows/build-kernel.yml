@@ -3,8 +3,9 @@ name: Build SukiSU Kernel for nabu (4.14.180)
 # ============================================================================
 # 为小米平板 5 (nabu) 编译内置 SukiSU 的内核
 #
-# 目标内核: Linux 4.14.180 (小米官方 MiCode/Xiaomi_Kernel_OpenSource, 分支 nabu-r-oss)
-#           —— 已与设备运行内核对比, defconfig 仅 22 项差异, 同一源码血缘
+# 目标内核: Linux 4.14.180 (Kuugo2002/xiaomi_kernel_nabu, 分支 HyperOS2)
+#           —— 与设备运行内核 defconfig 仅 1 项差异, 且已内置 per-comm uname
+#           —— 伪装 (netbpfload/bpfloader/netd 读 release 得 4.19.280)
 # root 方案: SukiSU-Nova builtin 分支 (无需 CONFIG_KPROBES, 适配 4.14 non-GKI)
 # 手动 hook: 6 个点 (faccessat / execveat / stat / vfs_read / reboot / input)
 #
@@ -32,9 +33,9 @@ on:
         default: false
 
 env:
-  KERNEL_REPO: https://github.com/MiCode/Xiaomi_Kernel_OpenSource
-  KERNEL_BRANCH: nabu-r-oss
-  DEFCONFIG: nabu_user_defconfig   # 仅作源码完整性校验, 实际用 config/nabu_device_defconfig
+  KERNEL_REPO: https://github.com/Kuugo2002/xiaomi_kernel_nabu
+  KERNEL_BRANCH: HyperOS2
+  DEFCONFIG: stock_defconfig   # 仅作源码完整性校验, 实际用 config/nabu_device_defconfig
   ARCH: arm64
 
 jobs:
@@ -164,36 +165,17 @@ jobs:
             || { echo "!! kvcalloc 兼容修复失败"; exit 1; }
           echo "✅ 4.14 access_ok / kvcalloc 兼容修复完成"
 
-          # ---- ★ 内核版本伪装: 只对 bpfloader 这一个进程伪造 uname release ----
-          # 设备是 ColorOS 15 (Android 15 / API 35), 其 netbpfload 读 uname() 的
-          # release 字段, 若 kernel < 4.19 就打 "Android V requires kernel 4.19"
-          # 并 exit(2), init 因 reboot_on_failure 执行 'reboot,bpfloader-failed'
-          # -> 重启循环 -> 高通启动失败保护踢回 fastboot。
-          #
-          # 【关键】不能全局改 init_uts_ns.name.release:
-          #   run11/run12 实测全局伪造 4.19.280 后内核能启动、KSU 正常、netbpfload
-          #   也读到 kver:4130118, 但进程仍 exited with status 2 -> 因为内核里所有
-          #   进程都看到 4.19, BPF 等子系统据此走 4.19 分支, 物理内核是 4.14 崩掉。
-          #   正确做法 (KernelPatch/APatch 的实测手法, 已用 A/B 实验坐实): 只按
-          #   ->comm 给 netbpfload/bpfloader 这一个进程返回 4.19.x, 其余进程仍看
-          #   真实 4.14。同一二进制改名为 netbpfload 就成功、改名为别的就失败,
-          #   与路径无关。
-          PATCH_UNAME="${GITHUB_WORKSPACE}/patches/uname-percomm.patch"
-          test -f "$PATCH_UNAME"
-          # 注意: 步骤开头已 cd kernel, 当前 cwd 就是内核源码树根;
-          # 补丁内路径 a/kernel/sys.c 配合 -p1 正好落在 <树根>/kernel/sys.c, 正确。
-          echo "=== uname per-comm dry-run ==="
-          patch -p1 --dry-run < "$PATCH_UNAME"
-          echo "=== uname per-comm apply ==="
-          patch -p1 < "$PATCH_UNAME"
-          grep -q "ksu_is_bpfloader_task" kernel/sys.c \
-            || { echo "!! per-comm uname 伪装补丁未生效"; exit 1; }
-          grep -q 'memcpy(tmp.release, "4.19.280-perf"' kernel/sys.c \
-            || { echo "!! per-comm uname 伪装补丁未生效"; exit 1; }
+          # ---- ★ 内核版本伪装: Kuugo HyperOS2 树已内置 per-comm uname 伪装 ----
+          # 该树 kernel/sys.c 已含: 若 current->comm 是 bpfloader/netbpfload/netd,
+          # 就把 uname() release 改成 4.19.280, 让 ColorOS15 netbpfload 通过
+          # "Android V requires kernel 4.19" 检查。无需再打 uname-percomm.patch。
+          grep -q "netbpfload" kernel/sys.c \
+            || { echo "!! Kuugo 树 kernel/sys.c 没有 per-comm 伪装 (netbpfload)"; exit 1; }
+          grep -q 'strcpy(tmp.release, "4.19.280")' kernel/sys.c \
+            || { echo "!! Kuugo 树 kernel/sys.c 没有 4.19.280 伪装"; exit 1; }
           test -z "$(grep 'UTS_RELEASE' init/version.c | grep '4.19')" \
             || { echo "!! init/version.c 不应被全局篡改"; exit 1; }
-          echo "✅ uname 仅对 netbpfload/bpfloader 进程伪装为 4.19.280-perf"
-
+          echo "✅ uname 仅对 netbpfload/bpfloader/netd 进程伪装为 4.19.280 (Kuugo 内置)"
       - name: Apply KSU manual hooks patch
         run: |
           set -eux
