@@ -184,9 +184,9 @@ jobs:
           patch -p1 --dry-run < "$PATCH_UNAME"
           echo "=== uname per-comm apply ==="
           patch -p1 < "$PATCH_UNAME"
-          grep -q "ksu_is_bpfloader_task" kernel/sys.c \
+          grep -q "ksu_is_bpfloader_task" sys.c \
             || { echo "!! per-comm uname 伪装补丁未生效"; exit 1; }
-          grep -q 'memcpy(tmp.release, "4.19.280-perf"' kernel/sys.c \
+          grep -q 'memcpy(tmp.release, "4.19.280-perf"' sys.c \
             || { echo "!! per-comm uname 伪装补丁未生效"; exit 1; }
           test -z "$(grep 'UTS_RELEASE' init/version.c | grep '4.19')" \
             || { echo "!! init/version.c 不应被全局篡改"; exit 1; }
