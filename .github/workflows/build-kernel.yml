@@ -164,18 +164,33 @@ jobs:
             || { echo "!! kvcalloc 兼容修复失败"; exit 1; }
           echo "✅ 4.14 access_ok / kvcalloc 兼容修复完成"
 
-          # ---- ★ 内核版本伪装: 绕过 Android V netbpfload 的 kernel>=4.19 检查 ----
-          # 设备是 ColorOS 15 (Android 15 / API 35), 其 netbpfload 会读 uname()
-          # 的 release 字段, 若 kernel < 4.19 就打印 "Android V requires kernel 4.19"
-          # 并以 'bpfloader-failed' 每 14 秒重启 -> 高通启动失败保护踢回 fastboot。
-          # 设备原本能启动是因为 APatch/KernelPatch hook 了 uname 伪装成 4.19.280
-          # (日志成功值 kver:4130118 = (4<<24)|(19<<16)|280)。
-          # 这里只改 init_uts_ns.name.release 的返回值, 不动 UTS_RELEASE 宏和
-          # LINUX_VERSION_CODE, 因此 4.14 源码的所有条件编译完全不受影响。
-          sed -i 's/\.release[[:space:]]*=[[:space:]]*UTS_RELEASE,/.release = "4.19.280-perf",/' init/version.c
-          grep -q '\.release = "4.19.280-perf"' init/version.c \
-            || { echo "!! uname 版本伪装失败"; grep -n '\.release' init/version.c; exit 1; }
-          echo "✅ uname 伪装为 4.19.280-perf (绕过 netbpfload kernel>=4.19)"
+          # ---- ★ 内核版本伪装: 只对 bpfloader 这一个进程伪造 uname release ----
+          # 设备是 ColorOS 15 (Android 15 / API 35), 其 netbpfload 读 uname() 的
+          # release 字段, 若 kernel < 4.19 就打 "Android V requires kernel 4.19"
+          # 并 exit(2), init 因 reboot_on_failure 执行 'reboot,bpfloader-failed'
+          # -> 重启循环 -> 高通启动失败保护踢回 fastboot。
+          #
+          # 【关键】不能全局改 init_uts_ns.name.release:
+          #   run11/run12 实测全局伪造 4.19.280 后内核能启动、KSU 正常、netbpfload
+          #   也读到 kver:4130118, 但进程仍 exited with status 2 -> 因为内核里所有
+          #   进程都看到 4.19, BPF 等子系统据此走 4.19 分支, 物理内核是 4.14 崩掉。
+          #   正确做法 (KernelPatch/APatch 的实测手法, 已用 A/B 实验坐实): 只按
+          #   ->comm 给 netbpfload/bpfloader 这一个进程返回 4.19.x, 其余进程仍看
+          #   真实 4.14。同一二进制改名为 netbpfload 就成功、改名为别的就失败,
+          #   与路径无关。
+          PATCH_UNAME="${GITHUB_WORKSPACE}/patches/uname-percomm.patch"
+          test -f "$PATCH_UNAME"
+          echo "=== uname per-comm dry-run ==="
+          patch -p1 --dry-run < "$PATCH_UNAME"
+          echo "=== uname per-comm apply ==="
+          patch -p1 < "$PATCH_UNAME"
+          grep -q "ksu_is_bpfloader_task" kernel/sys.c \
+            || { echo "!! per-comm uname 伪装补丁未生效"; exit 1; }
+          grep -q 'memcpy(tmp.release, "4.19.280-perf"' kernel/sys.c \
+            || { echo "!! per-comm uname 伪装补丁未生效"; exit 1; }
+          test -z "$(grep 'UTS_RELEASE' init/version.c | grep '4.19')" \
+            || { echo "!! init/version.c 不应被全局篡改"; exit 1; }
+          echo "✅ uname 仅对 netbpfload/bpfloader 进程伪装为 4.19.280-perf"
 
       - name: Apply KSU manual hooks patch
         run: |
