@@ -235,6 +235,14 @@ jobs:
             # 并被 -Werror 打断。这是"记录最后触摸事件"的调试特性, 与 root/KSU 无关,
             # 关掉宏即可 (调用点被 #ifdef 包住), 不影响触屏正常工作。
             echo "# CONFIG_LAST_TOUCH_EVENTS is not set"
+            # ---- 修复 WiFi: 编译 qcacld-3.0 主驱动为 built-in ----
+            # 设备走 ICNSS(SNOC)/HELIUMPLUS 芯片路径 (CONFIG_ICNSS=y 已设),
+            # qcacld-3.0 源码在 drivers/staging/qcacld-3.0 (含 Kconfig/Kbuild),
+            # 但默认没被 defconfig 选中 -> 之前内核里没有 wlan 主驱动, 只能靠
+            # c15 原厂的 /vendor/lib/modules/qca_cld3_wlan.ko, 而它的 vermagic/
+            # module_layout CRC 与我们的内核不匹配 -> "disagrees about version
+            # of symbol module_layout"。编成 built-in 直接注册 wlan0, 绕开 .ko 加载。
+            echo "CONFIG_QCA_CLD_WLAN=y"
             # ---- 隔离变量: 本 pstore 强化块已回退到 run9 状态 ----
             # run9 已验证能启动到 framework (pstore 里有 SukiSU banner + Nova
             # 授权记录), run11 同时加了 uname 伪装 + 本 pstore 块后卡米字。
@@ -255,7 +263,7 @@ jobs:
           } >> out/.config
           make O=out ARCH=arm64 olddefconfig
           echo "=== 关键配置确认 ==="
-          grep -E "CONFIG_KSU=|CONFIG_KSU_SUSFS|CONFIG_KPM=|CONFIG_KALLSYMS=|CONFIG_KPROBES|CONFIG_MODVERSIONS=|CONFIG_LOCALVERSION=" out/.config
+          grep -E "CONFIG_KSU=|CONFIG_KSU_SUSFS|CONFIG_KPM=|CONFIG_KALLSYMS=|CONFIG_KPROBES|CONFIG_MODVERSIONS=|CONFIG_LOCALVERSION=|CONFIG_QCA_CLD_WLAN=|CONFIG_ICNSS=" out/.config
 
           # ---- 强校验: CONFIG_KSU 必须存活 ----
           # 如果 Kconfig 没被正确 source, 或 builtin 分支没检出, olddefconfig 会
